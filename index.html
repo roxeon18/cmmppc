@@ -72,7 +72,7 @@
       { name: "Muerte (Liliana)", url: "https://images.unsplash.com/photo-1514064019862-23e2a332a6a6?w=600&auto=format&fit=crop&q=80" },
       { name: "Agua (Jace)", url: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=600&auto=format&fit=crop&q=80" },
       { name: "Luz (Gideon)", url: "https://images.unsplash.com/photo-1559893088-c0787ebfc084?w=600&auto=format&fit=crop&q=80" },
-      { name: "Dragón (Nicol Bolas)", url: "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600&auto=format&fit=crop&q=80" },
+      { name: "Dragon (Nicol Bolas)", url: "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600&auto=format&fit=crop&q=80" },
       { name: "Ciudadela Antigua", url: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80" },
       { name: "Eclipse Astral", url: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=600&auto=format&fit=crop&q=80" }
     ];
@@ -160,7 +160,7 @@
       appState.data = next;
       try {
         const res = await mockStorage.set(STORAGE_KEY, JSON.stringify(next), true);
-        appState.saveError = res ? null : "No se pudo guardar el cambio. Revisa tu conexión.";
+        appState.saveError = res ? null : "No se pudo guardar el cambio. Revisa tu conexion.";
       } catch (e) {
         appState.saveError = "No se pudo guardar el cambio en el servidor.";
       }
@@ -266,6 +266,196 @@
           winrate: stats.winrate
         };
       }).sort((a, b) => b.winrate - a.winrate || b.wins - a.wins || b.gamesPlayed - a.gamesPlayed || a.name.localeCompare(b.name));
+    }
+
+    function openEditDeckModal(deck) {
+      const modalWrapper = document.createElement("div");
+      modalWrapper.id = "edit-deck-modal-container";
+      modalWrapper.className = "fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4";
+      
+      modalWrapper.innerHTML = `
+        <div class="bg-felt border border-gold/40 rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+          <h3 class="font-serif text-2xl font-bold text-goldBright mb-4">Editar Mazo</h3>
+          
+          <form id="edit-deck-form" class="space-y-4">
+            <div id="edit-deck-error"></div>
+            
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-parchmentDim/70 mb-1">Nombre del mazo</label>
+              <input type="text" id="edit-deck-name" value="${esc(deck.name)}" class="w-full bg-feltLight border border-gold/30 text-parchment rounded-lg p-2.5 text-sm focus:border-gold focus:outline-none">
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-parchmentDim/70 mb-1">Comandante</label>
+              <input type="text" id="edit-deck-commander" value="${esc(deck.commander)}" class="w-full bg-feltLight border border-gold/30 text-parchment rounded-lg p-2.5 text-sm focus:border-gold focus:outline-none">
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-parchmentDim/70 mb-1 flex justify-between">
+                <span>Enlace de Decklist (Opcional)</span>
+                <span class="text-[10px] text-goldBright font-mono">Escanear disponible</span>
+              </label>
+              <div class="flex gap-2">
+                <input type="url" id="edit-deck-url" value="${esc(deck.deckUrl || '')}" placeholder="https://www.moxfield.com/decks/..." class="w-full bg-feltLight border border-gold/30 text-parchment rounded-lg p-2.5 text-xs focus:border-gold focus:outline-none">
+                <button type="button" id="edit-deck-scan-btn" class="bg-gold/20 hover:bg-gold hover:text-black text-goldBright text-xs px-4 py-2.5 rounded-lg border border-gold/20 transition-all font-semibold shrink-0 cursor-pointer">
+                  Escanear
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-parchmentDim/70 mb-1">URL de la Imagen del Comandante (Opcional)</label>
+              <input type="url" id="edit-deck-image-url" value="${esc(deck.imageUrl || '')}" placeholder="https://ejemplo.com/arte.jpg" class="w-full bg-feltLight border border-gold/30 text-parchment rounded-lg p-2.5 text-xs focus:border-gold focus:outline-none">
+            </div>
+
+            <div id="edit-deck-preview-zone" class="min-h-[20px]">
+              ${deck.imageUrl ? `
+                <div class="mt-2 p-2 bg-black/40 border border-gold/20 rounded-lg flex items-center gap-3">
+                  <img class="w-12 h-12 object-cover rounded border border-white/10 shrink-0" src="${deck.imageUrl}">
+                  <div>
+                    <div class="text-[9px] uppercase text-goldBright tracking-wider font-semibold">Ilustración de Mazo</div>
+                    <div class="text-xs font-bold text-parchment leading-tight">${deck.commander}</div>
+                  </div>
+                </div>` : `<span class="text-[10px] text-parchmentDim/50 italic">Sin ilustración personalizada.</span>`}
+            </div>
+
+            <div class="flex gap-2 pt-3">
+              <button type="submit" class="flex-1 py-2.5 rounded-lg bg-gold text-ink font-bold text-sm hover:bg-goldBright transition-all cursor-pointer">
+                Guardar Cambios
+              </button>
+              <button type="button" id="edit-deck-cancel-btn" class="px-5 py-2.5 rounded-lg bg-white/5 border border-white/10 text-parchment text-sm hover:bg-white/10 transition-all cursor-pointer">
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </div>`;
+        
+      document.body.appendChild(modalWrapper);
+      
+      const scanBtn = modalWrapper.querySelector("#edit-deck-scan-btn");
+      const urlInput = modalWrapper.querySelector("#edit-deck-url");
+      const commanderInput = modalWrapper.querySelector("#edit-deck-commander");
+      const imgInput = modalWrapper.querySelector("#edit-deck-image-url");
+      const previewZone = modalWrapper.querySelector("#edit-deck-preview-zone");
+      const form = modalWrapper.querySelector("#edit-deck-form");
+      
+      let tempImageUrl = deck.imageUrl || "";
+      
+      const triggerScan = async () => {
+        const url = urlInput.value.trim();
+        if (!url) {
+          previewZone.innerHTML = `<span class="text-[10px] text-crimson">Introduce una URL de mazo válida primero.</span>`;
+          return;
+        }
+        
+        previewZone.innerHTML = `
+          <div class="flex items-center gap-2 text-[10px] text-goldBright/80 py-1">
+            <svg class="animate-spin h-3 w-3 text-goldBright" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span class="font-mono text-[9px]">Escaneando mazo con IA...</span>
+          </div>`;
+          
+        try {
+          const commanderName = await fetchCommanderFromUrl(url);
+          if (commanderName) {
+            commanderInput.value = commanderName;
+            previewZone.innerHTML = `
+              <div class="flex items-center gap-2 text-[10px] text-goldBright/80 py-1">
+                <svg class="animate-spin h-3 w-3 text-goldBright" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="font-mono text-[9px]">Obteniendo ilustración de Scryfall...</span>
+              </div>`;
+            
+            const cardData = await fetchScryfallData(commanderName);
+            if (cardData) {
+              commanderInput.value = cardData.name;
+              imgInput.value = cardData.artCrop;
+              tempImageUrl = cardData.artCrop;
+              previewZone.innerHTML = `
+                <div class="mt-2 p-2 bg-black/40 border border-gold/20 rounded-lg flex items-center gap-3 animate-fade-in">
+                  <img class="w-12 h-12 object-cover rounded border border-white/10 shrink-0" src="${cardData.artCrop}">
+                  <div>
+                    <div class="text-[9px] uppercase text-goldBright tracking-wider font-semibold">¡Importado!</div>
+                    <div class="text-xs font-bold text-parchment leading-tight">${cardData.name}</div>
+                  </div>
+                </div>`;
+            } else {
+              previewZone.innerHTML = `<span class="text-[10px] text-goldBright">Comandante: <strong>${esc(commanderName)}</strong> (Sin ilustración).</span>`;
+            }
+          } else {
+            previewZone.innerHTML = `<span class="text-[10px] text-crimson">No se detectó el comandante automáticamente.</span>`;
+          }
+        } catch (err) {
+          previewZone.innerHTML = `<span class="text-[10px] text-crimson">Error en el proceso de escaneo.</span>`;
+        }
+      };
+      
+      scanBtn.addEventListener("click", triggerScan);
+      
+      commanderInput.addEventListener("blur", async () => {
+        const val = commanderInput.value.trim();
+        if (val) {
+          previewZone.innerHTML = `<span class="text-[10px] text-goldBright/70 animate-pulse">Buscando ilustración en Scryfall...</span>`;
+          const cardData = await fetchScryfallData(val);
+          if (cardData) {
+            previewZone.innerHTML = `
+              <div class="mt-2 p-2 bg-black/40 border border-gold/20 rounded-lg flex items-center gap-3">
+                <img class="w-12 h-12 object-cover rounded border border-white/10 shrink-0" src="${cardData.artCrop}">
+                <div>
+                  <div class="text-[9px] uppercase text-goldBright tracking-wider font-semibold">Ilustración Encontrada</div>
+                  <div class="text-xs font-bold text-parchment leading-tight">${cardData.name}</div>
+                </div>
+              </div>`;
+            imgInput.value = cardData.artCrop;
+            tempImageUrl = cardData.artCrop;
+            commanderInput.value = cardData.name;
+          } else {
+            previewZone.innerHTML = `<span class="text-[10px] text-crimson">No se encontró en Scryfall.</span>`;
+          }
+        }
+      });
+      
+      modalWrapper.querySelector("#edit-deck-cancel-btn").addEventListener("click", () => {
+        modalWrapper.remove();
+      });
+      
+      form.addEventListener("submit", (ev) => {
+        ev.preventDefault();
+        const nextName = modalWrapper.querySelector("#edit-deck-name").value.trim();
+        const nextCommander = modalWrapper.querySelector("#edit-deck-commander").value.trim();
+        const nextUrl = modalWrapper.querySelector("#edit-deck-url").value.trim();
+        const nextImg = modalWrapper.querySelector("#edit-deck-image-url").value.trim() || tempImageUrl;
+        
+        const errBox = modalWrapper.querySelector("#edit-deck-error");
+        if (!nextName || !nextCommander) {
+          errBox.innerHTML = `<div class="bg-crimson/10 border border-crimson text-parchment text-xs p-3 rounded-lg mb-3">Introduce nombre de mazo y comandante.</div>`;
+          return;
+        }
+        
+        const updatedDecks = appState.data.decks.map(dk => {
+          if (dk.id === deck.id) {
+            return {
+              ...dk,
+              name: nextName,
+              commander: nextCommander,
+              deckUrl: nextUrl,
+              imageUrl: nextImg
+            };
+          }
+          return dk;
+        });
+        
+        persistData({
+          ...appState.data,
+          decks: updatedDecks
+        });
+        
+        modalWrapper.remove();
+      });
     }
 
     async function fetchCommanderFromUrl(decklistUrl) {
@@ -966,14 +1156,19 @@
               </a>` : `<span class="text-[9px] text-parchmentDim/40 italic block mt-1.5">Sin enlace</span>`
             }
           </div>
-          <div class="flex items-center gap-3 shrink-0 bg-black/70 p-1.5 rounded-lg border border-white/5">
-            <div class="text-right font-mono text-[9px] text-parchmentDim/60">
+          <div class="flex items-center gap-2 shrink-0 bg-black/70 p-1.5 rounded-lg border border-white/5">
+            <div class="text-right font-mono text-[9px] text-parchmentDim/60 mr-1">
               <span class="block font-semibold text-goldBright text-[10px]">${st.wins}V - ${st.gamesPlayed}PJ</span>
               <span>WR: ${Math.round(st.winrate)}%</span>
             </div>
-            <button class="text-crimson/70 hover:text-crimson bg-crimson/10 p-1.5 rounded text-xs transition-colors cursor-pointer font-semibold" data-action="delete-deck" title="Eliminar mazo">
-              Borrar
-            </button>
+            <div class="flex flex-col gap-1">
+              <button class="text-goldBright/80 hover:text-goldBright bg-white/5 hover:bg-white/10 px-2 py-1 rounded text-[10px] transition-all font-semibold cursor-pointer" data-action="edit-deck" title="Editar mazo">
+                Editar
+              </button>
+              <button class="text-crimson/70 hover:text-crimson bg-crimson/10 px-2 py-1 rounded text-[10px] transition-colors cursor-pointer font-semibold" data-action="delete-deck" title="Eliminar mazo">
+                Borrar
+              </button>
+            </div>
           </div>
         </div>`;
     }
@@ -1106,8 +1301,8 @@
 
           <div>
             <label class="block text-[9px] uppercase tracking-wider text-gold/80 mb-1 font-semibold flex justify-between">
-              <span>Enlace de Decklist (Moxfield, Archidekt, etc.)</span>
-              <span class="text-[8px] text-goldBright animate-pulse">Llenado automático activo</span>
+              <span>Enlace de Decklist (Opcional)</span>
+              <span class="text-[8px] text-goldBright animate-pulse">Escanear activo</span>
             </label>
             <div class="relative flex gap-1.5">
               <input type="url" class="new-deck-url w-full bg-felt border border-gold/30 text-parchment rounded p-2 pr-20 text-xs focus:outline-none" placeholder="https://www.moxfield.com/decks/...">
@@ -1118,12 +1313,17 @@
           </div>
 
           <div class="deck-preview-zone min-h-[20px]">
-            <span class="text-[9px] text-parchmentDim/50 italic">Pega tu enlace y haz clic en Escanear para identificar tu comandante y su ilustración.</span>
+            <span class="text-[9px] text-parchmentDim/50 italic">Escribe el mazo o comandante, o escanea para obtener su ilustración de Scryfall de forma automática.</span>
           </div>
 
           <div>
             <label class="block text-[9px] uppercase tracking-wider text-gold/80 mb-1 font-semibold">Comandante</label>
             <input type="text" class="new-deck-commander w-full bg-felt border border-gold/30 text-parchment rounded p-2 text-xs focus:outline-none" placeholder="Ej. Marwyn, la Nutricia">
+          </div>
+
+          <div>
+            <label class="block text-[9px] uppercase tracking-wider text-gold/80 mb-1 font-semibold">URL de la Imagen del Comandante (Opcional)</label>
+            <input type="url" class="new-deck-image-url w-full bg-felt border border-gold/30 text-parchment rounded p-2 text-xs focus:outline-none" placeholder="https://ejemplo.com/arte.jpg">
           </div>
 
           <div class="flex gap-2 pt-1">
@@ -1137,9 +1337,10 @@
     async function handleAutofetch(decklistUrl, zone) {
       const statusZone = zone.querySelector(".deck-preview-zone");
       const commanderInput = zone.querySelector(".new-deck-commander");
+      const imgInput = zone.querySelector(".new-deck-image-url");
       
       if (!decklistUrl) {
-        statusZone.innerHTML = `<span class="text-[10px] text-crimson">Por favor introduce un enlace válido primero.</span>`;
+        statusZone.innerHTML = `<span class="text-[10px] text-crimson">Por favor introduce un enlace de decklist primero.</span>`;
         return;
       }
       
@@ -1161,31 +1362,32 @@
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <span class="font-mono text-[9px]">Encontrado: ${esc(commanderName)}. Extrayendo arte de Scryfall...</span>
+              <span class="font-mono text-[9px]">Mazo detectado: ${esc(commanderName)}. Buscando arte...</span>
             </div>`;
           
           const cardData = await fetchScryfallData(commanderName);
           if (cardData) {
             commanderInput.value = cardData.name;
+            imgInput.value = cardData.artCrop;
             statusZone.innerHTML = `
               <div class="mt-2 p-2 bg-black/40 border border-gold/20 rounded-lg flex items-center gap-3 animate-fade-in">
                 <img class="w-12 h-12 object-cover rounded border border-white/10 shrink-0 shadow-lg" src="${cardData.artCrop}">
                 <div>
-                  <div class="text-[9px] uppercase text-goldBright tracking-wider font-semibold">¡Importación Exitosa!</div>
+                  <div class="text-[9px] uppercase text-goldBright tracking-wider font-semibold">¡Importado!</div>
                   <div class="text-xs font-bold text-parchment leading-tight">${cardData.name}</div>
                 </div>
               </div>`;
             zone.setAttribute("data-temp-image-url", cardData.artCrop);
           } else {
             commanderInput.value = commanderName;
-            statusZone.innerHTML = `<span class="text-[10px] text-goldBright font-medium">Comandante: <strong>${esc(commanderName)}</strong> (Ilustración no hallada).</span>`;
+            statusZone.innerHTML = `<span class="text-[10px] text-goldBright font-medium">Comandante: <strong>${esc(commanderName)}</strong> (Sin ilustración oficial).</span>`;
           }
         } else {
-          statusZone.innerHTML = `<span class="text-[10px] text-crimson">No se detectó un comandante automáticamente. Escríbelo abajo.</span>`;
+          statusZone.innerHTML = `<span class="text-[10px] text-crimson">No se detectó un comandante automáticamente.</span>`;
         }
       } catch (err) {
         console.error(err);
-        statusZone.innerHTML = `<span class="text-[10px] text-crimson">La lectura falló. Escríbelo manualmente debajo.</span>`;
+        statusZone.innerHTML = `<span class="text-[10px] text-crimson">Fallo al escanear el mazo. Escríbelo a mano.</span>`;
       }
     }
 
@@ -1235,6 +1437,18 @@
         const playerId = card.getAttribute("data-player-id");
         const playerObj = appState.data.players.find(p => p.id === playerId);
 
+        // Edit Deck Action
+        if (e.target.closest('[data-action="edit-deck"]')) {
+          const row = e.target.closest("[data-deck-id]");
+          const deckId = row.getAttribute("data-deck-id");
+          const deckObj = appState.data.decks.find(d => d.id === deckId);
+          if (deckObj) {
+            openEditDeckModal(deckObj);
+          }
+          return;
+        }
+
+        // Edit Profile Action
         if (e.target.closest('[data-action="edit-profile"]')) {
           const modalWrapper = document.createElement("div");
           modalWrapper.id = "player-modal-container";
@@ -1268,6 +1482,7 @@
           return;
         }
 
+        // Open Add Deck Form
         if (e.target.closest('[data-action="open-add-deck"]')) {
           const zone = card.querySelector(".add-deck-zone");
           zone.innerHTML = addDeckFormHTML();
@@ -1275,6 +1490,7 @@
           const urlInput = zone.querySelector(".new-deck-url");
           const autoBtn = zone.querySelector('[data-action="autofetch-deck"]');
           const commanderInput = zone.querySelector(".new-deck-commander");
+          const imgInput = zone.querySelector(".new-deck-image-url");
           
           const triggerAutofetch = () => {
             const url = urlInput.value.trim();
@@ -1311,6 +1527,7 @@
                 zone.setAttribute("data-temp-image-url", cardData.artCrop);
                 zone.setAttribute("data-temp-commander-name", cardData.name);
                 commanderInput.value = cardData.name;
+                imgInput.value = cardData.artCrop;
               } else {
                 previewZone.innerHTML = `<span class="text-[10px] text-crimson">No se encontró en Scryfall. Puedes usar este nombre igualmente.</span>`;
               }
@@ -1322,7 +1539,7 @@
             const name = zone.querySelector(".new-deck-name").value.trim();
             const commander = zone.querySelector(".new-deck-commander").value.trim();
             const url = zone.querySelector(".new-deck-url").value.trim();
-            const imageUrl = zone.getAttribute("data-temp-image-url") || "";
+            const imageUrl = zone.querySelector(".new-deck-image-url").value.trim() || zone.getAttribute("data-temp-image-url") || "";
             const errBox = zone.querySelector(".deck-form-error");
             
             if (!name || !commander) { 
@@ -1338,6 +1555,7 @@
           return;
         }
 
+        // Delete Deck Action
         if (e.target.closest('[data-action="delete-deck"]')) {
           const row = e.target.closest("[data-deck-id]");
           const deckId = row.getAttribute("data-deck-id");
@@ -1349,6 +1567,7 @@
           return;
         }
 
+        // Delete Player UI
         if (e.target.closest('[data-action="ask-delete-player"]')) {
           const zone = card.querySelector(".delete-player-zone");
           zone.innerHTML = `
