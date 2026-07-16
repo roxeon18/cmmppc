@@ -1082,20 +1082,20 @@
         const rankSymbol = i + 1;
         const coverPhoto = getPlayerBackground(p);
         return `
-          <div class="relative flex items-center gap-3 p-3 rounded-xl border border-white/5 overflow-hidden transition-all duration-200 hover:border-gold/40 hover:scale-[1.01]"
-               style="background-image: linear-gradient(90deg, rgba(0,0,0,0.88) 30%, rgba(0,0,0,0.4) 100%), url('${coverPhoto}'); background-size: cover; background-position: center;">
-            <div class="font-serif font-bold text-gold text-lg w-7 text-center shrink-0 drop-shadow-md">${rankSymbol}</div>
+          <div class="relative flex items-center gap-4 p-5 min-h-[92px] rounded-2xl border border-white/5 overflow-hidden transition-all duration-200 hover:border-gold/40 hover:scale-[1.01]"
+               style="background-image: linear-gradient(90deg, rgba(0,0,0,0.85) 25%, rgba(0,0,0,0.35) 100%), url('${coverPhoto}'); background-size: cover; background-position: center;">
+            <div class="font-serif font-bold text-gold text-2xl w-9 text-center shrink-0 drop-shadow-md">${rankSymbol}</div>
             <div class="flex-1 min-w-0">
-              <div class="font-serif font-semibold text-parchment text-sm drop-shadow-md truncate">${esc(p.name)}</div>
+              <div class="font-serif font-bold text-parchment text-lg sm:text-xl drop-shadow-md truncate">${esc(p.name)}</div>
             </div>
-            <div class="flex items-center gap-2.5 shrink-0 font-mono">
-              <div class="text-center bg-black/50 px-2 py-1 rounded border border-white/10 min-w-[3.2rem]">
-                <div class="text-parchmentDim/60 text-[8px] uppercase tracking-wider">PJ / Wins</div>
-                <div class="text-parchment text-[11px] font-semibold">${p.gamesPlayed} / ${p.wins}</div>
+            <div class="flex items-center gap-3 shrink-0 font-mono">
+              <div class="text-center bg-black/50 px-3 py-2 rounded-lg border border-white/10 min-w-[4.2rem]">
+                <div class="text-parchmentDim/60 text-[9px] uppercase tracking-wider">PJ / Wins</div>
+                <div class="text-parchment text-sm font-semibold">${p.gamesPlayed} / ${p.wins}</div>
               </div>
-              <div class="text-center bg-black/60 px-2.5 py-1 rounded border border-gold/25 min-w-[3.2rem]">
-                <div class="text-goldBright/70 text-[8px] uppercase tracking-wider">Winrate</div>
-                <div class="text-gold font-bold text-xs">${Math.round(p.winrate)}%</div>
+              <div class="text-center bg-black/60 px-3.5 py-2 rounded-lg border border-gold/25 min-w-[4.2rem]">
+                <div class="text-goldBright/70 text-[9px] uppercase tracking-wider">Winrate</div>
+                <div class="text-gold font-bold text-base">${Math.round(p.winrate)}%</div>
               </div>
             </div>
           </div>
@@ -1106,21 +1106,21 @@
         const rankSymbol = i + 1;
         const thumb = d.imageUrl || "https://placehold.co/400x200/1b241f/bb9550?text=Sin+Arte";
         return `
-          <div class="relative flex items-center gap-3 p-3 rounded-xl border border-white/5 overflow-hidden transition-all duration-200 hover:border-gold/40 hover:scale-[1.01]"
-               style="background-image: linear-gradient(90deg, rgba(0,0,0,0.88) 30%, rgba(0,0,0,0.4) 100%), url('${thumb}'); background-size: cover; background-position: center;">
-            <div class="font-serif font-bold text-gold text-lg w-7 text-center shrink-0 drop-shadow-md">${rankSymbol}</div>
+          <div class="relative flex items-center gap-4 p-5 min-h-[92px] rounded-2xl border border-white/5 overflow-hidden transition-all duration-200 hover:border-gold/40 hover:scale-[1.01]"
+               style="background-image: linear-gradient(90deg, rgba(0,0,0,0.85) 25%, rgba(0,0,0,0.35) 100%), url('${thumb}'); background-size: cover; background-position: center;">
+            <div class="font-serif font-bold text-gold text-2xl w-9 text-center shrink-0 drop-shadow-md">${rankSymbol}</div>
             <div class="flex-1 min-w-0">
-              <div class="font-serif font-semibold text-parchment text-sm drop-shadow-md truncate" title="${esc(d.name)}">${esc(d.name)}</div>
-              <div class="text-[10px] text-goldBright/90 truncate drop-shadow">Comandante: ${esc(d.commander)} (por ${esc(d.ownerName)})</div>
+              <div class="font-serif font-bold text-parchment text-lg sm:text-xl drop-shadow-md truncate" title="${esc(d.name)}">${esc(d.name)}</div>
+              <div class="text-xs sm:text-sm text-goldBright/90 truncate drop-shadow">Comandante: ${esc(d.commander)} (por ${esc(d.ownerName)})</div>
             </div>
-            <div class="flex items-center gap-2.5 shrink-0 font-mono">
-              <div class="text-center bg-black/50 px-2 py-1 rounded border border-white/10 min-w-[3.2rem]">
-                <div class="text-parchmentDim/60 text-[8px] uppercase tracking-wider">PJ / Wins</div>
-                <div class="text-parchment text-[11px] font-semibold">${d.gamesPlayed} / ${d.wins}</div>
+            <div class="flex items-center gap-3 shrink-0 font-mono">
+              <div class="text-center bg-black/50 px-3 py-2 rounded-lg border border-white/10 min-w-[4.2rem]">
+                <div class="text-parchmentDim/60 text-[9px] uppercase tracking-wider">PJ / Wins</div>
+                <div class="text-parchment text-sm font-semibold">${d.gamesPlayed} / ${d.wins}</div>
               </div>
-              <div class="text-center bg-black/60 px-2.5 py-1 rounded border border-gold/25 min-w-[3.2rem]">
-                <div class="text-goldBright/70 text-[8px] uppercase tracking-wider">Winrate</div>
-                <div class="text-gold font-bold text-xs">${Math.round(d.winrate)}%</div>
+              <div class="text-center bg-black/60 px-3.5 py-2 rounded-lg border border-gold/25 min-w-[4.2rem]">
+                <div class="text-goldBright/70 text-[9px] uppercase tracking-wider">Winrate</div>
+                <div class="text-gold font-bold text-base">${Math.round(d.winrate)}%</div>
               </div>
             </div>
           </div>
