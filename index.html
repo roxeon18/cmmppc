@@ -62,6 +62,42 @@
 
   <div id="app" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"></div>
 
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    // ==========================================================================
+    // PEGA AQUÍ TU CONFIGURACIÓN DE FIREBASE
+    // (Firebase console > icono de engranaje > Configuración del proyecto >
+    //  pestaña "Tus apps" > icono "</>" > copia el objeto firebaseConfig)
+    // Mientras apiKey/projectId estén vacíos, la app sigue funcionando en local
+    // (localStorage), pero SIN compartir datos entre dispositivos.
+    // ==========================================================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyBRTcgVt7QD5Vbi0Vpv1tRKjA0XWxAkp24",
+      authDomain: "cmmppc18.firebaseapp.com",
+      projectId: "cmmppc18",
+      storageBucket: "cmmppc18.firebasestorage.app",
+      messagingSenderId: "71258609974",
+      appId: "1:71258609974:web:cf18a354fd7173a3c83b97"
+    };
+
+    if (firebaseConfig.apiKey && firebaseConfig.projectId) {
+      const app = initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+      const ref = doc(db, "commander-tracker", "shared-data");
+      window.__firebase = { db, ref, getDoc, setDoc, onSnapshot };
+      console.log("Firebase conectado: los datos se guardarán en la nube y se compartirán entre todos los dispositivos.");
+    } else {
+      console.warn("Firebase no está configurado todavía: los datos solo se guardan en este navegador (localStorage).");
+    }
+
+    // Arranca la app solo cuando ya sabemos si Firebase está disponible o no,
+    // para evitar condiciones de carrera entre este módulo (siempre diferido)
+    // y el script principal (que se ejecuta antes, de forma síncrona).
+    window.loadData();
+  </script>
+
   <script>
     const STORAGE_KEY = "commander-data";
     
@@ -119,10 +155,18 @@
     const mockStorage = {
       get: async (key, bypass) => {
         if (window.storage && window.storage.get) return window.storage.get(key, bypass);
+        if (window.__firebase) {
+          const snap = await window.__firebase.getDoc(window.__firebase.ref);
+          return { value: snap.exists() ? JSON.stringify(snap.data()) : null };
+        }
         return { value: localStorage.getItem(key) };
       },
       set: async (key, val, bypass) => {
         if (window.storage && window.storage.set) return window.storage.set(key, val, bypass);
+        if (window.__firebase) {
+          await window.__firebase.setDoc(window.__firebase.ref, JSON.parse(val));
+          return true;
+        }
         localStorage.setItem(key, val);
         return true;
       }
@@ -154,6 +198,18 @@
       }
       appState.loading = false;
       render();
+
+      // Sincronización en tiempo real: si otro jugador cambia algo desde otro
+      // dispositivo, aquí se refleja solo, sin necesidad de recargar.
+      if (window.__firebase) {
+        window.__firebase.onSnapshot(window.__firebase.ref, (snap) => {
+          if (snap.exists()) {
+            appState.data = snap.data();
+            appState.loading = false;
+            render();
+          }
+        });
+      }
     }
 
     async function persistData(next) {
@@ -1521,8 +1577,6 @@
         }
       });
     }
-
-    loadData();
   </script>
 </body>
 </html>
