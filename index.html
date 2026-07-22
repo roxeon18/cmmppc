@@ -65,6 +65,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
     // ==========================================================================
     // PEGA AQUÍ TU CONFIGURACIÓN DE FIREBASE
@@ -86,8 +87,17 @@
       const app = initializeApp(firebaseConfig);
       const db = getFirestore(app);
       const ref = doc(db, "commander-tracker", "shared-data");
-      window.__firebase = { db, ref, getDoc, setDoc, onSnapshot };
+      const auth = getAuth(app);
+      window.__firebase = { db, ref, getDoc, setDoc, onSnapshot, auth, signInWithEmailAndPassword, signOut };
       console.log("Firebase conectado: los datos se guardarán en la nube y se compartirán entre todos los dispositivos.");
+
+      // Se actualiza sola cada vez que cambia el estado de sesión (login/logout,
+      // o al recargar la página si el navegador ya tenía sesión guardada).
+      onAuthStateChanged(auth, (user) => {
+        window.__isOwner = !!user;
+        window.__authEmail = user ? user.email : null;
+        if (window.render) window.render();
+      });
     } else {
       console.warn("Firebase no está configurado todavía: los datos solo se guardan en este navegador (localStorage).");
     }
@@ -301,7 +311,12 @@
       const map = {};
       decks.forEach((d) => {
         const dg = games.filter((g) => g.participants.some((pt) => pt.deckId === d.id));
-        const wins = dg.filter((g) => g.winnerId === d.playerId).length;
+        // La victoria se cuenta si quien LLEVÓ el mazo esa partida (sea o no su dueño,
+        // por ejemplo un mazo prestado) es quien ganó, no si el ganador es el dueño del mazo.
+        const wins = dg.filter((g) => {
+          const participant = g.participants.find((pt) => pt.deckId === d.id);
+          return participant && participant.playerId === g.winnerId;
+        }).length;
         const gamesPlayed = dg.length;
         map[d.id] = { gamesPlayed, wins, winrate: gamesPlayed ? (wins / gamesPlayed) * 100 : 0 };
       });
@@ -341,17 +356,43 @@
     function detectCommandersFromList(text) {
       const lines = text.split(/\r?\n/).map((l) => l.trim());
 
+      // Recoge todas las cartas que aparecen en la lista (para poder ofrecerlas como opciones).
+      // Primera pasada: exige que la línea empiece por una cantidad ("1 ", "2x ", etc.),
+      // que es como vienen casi todos los exports, para descartar cabeceras de categoría
+      // como "Creatures" o "Lands (36)".
+      function collectCards(requireQuantity) {
+        const cards = [];
+        const seen = new Set();
+        lines.forEach((line) => {
+          if (!line) return;
+          if (/^[a-zA-ZÀ-ÿ /]+\(\d+\)\s*$/i.test(line)) return; // "Creature (36)"
+          if (/^(commanders?|deck|maindeck|maybeboard|sideboard|companion)\s*:?$/i.test(line)) return;
+          if (/^\/\//.test(line)) return; // comentario
+          if (requireQuantity && !/^\d+\s*x?\s+\S/i.test(line)) return;
+          const cleaned = cleanCardLine(line);
+          const key = cleaned.toLowerCase();
+          if (cleaned && !seen.has(key)) {
+            seen.add(key);
+            cards.push(cleaned);
+          }
+        });
+        return cards;
+      }
+
+      let allCards = collectCards(true);
+      if (allCards.length === 0) allCards = collectCards(false); // lista pegada sin cantidades
+
       // 1) Cabecera explícita "Commander" / "Commanders"
       for (let i = 0; i < lines.length; i++) {
         if (/^commanders?\s*:?$/i.test(lines[i]) || /^\/\/\s*commanders?/i.test(lines[i])) {
           const found = [];
           for (let j = i + 1; j < lines.length; j++) {
             if (!lines[j]) break;
-            if (/^[a-z /]+\(\d+\)\s*$/i.test(lines[j])) break;
+            if (/^[a-zA-ZÀ-ÿ /]+\(\d+\)\s*$/i.test(lines[j])) break;
             const cleaned = cleanCardLine(lines[j]);
             if (cleaned) found.push(cleaned);
           }
-          if (found.length) return { candidates: found, confidence: "alta" };
+          if (found.length) return { candidates: found, allCards, confidence: "alta" };
         }
       }
 
@@ -359,14 +400,63 @@
       const marked = lines.filter((l) => /\*cmdr\*/i.test(l) || /\(commander\)/i.test(l) || /\[commander\]/i.test(l));
       if (marked.length) {
         const cleaned = marked.map(cleanCardLine).filter(Boolean);
-        if (cleaned.length) return { candidates: cleaned, confidence: "alta" };
+        if (cleaned.length) return { candidates: cleaned, allCards, confidence: "alta" };
       }
 
-      // 3) Fallback: primera línea no vacía de la lista
-      const first = lines.find((l) => l.length > 0);
-      if (first) return { candidates: [cleanCardLine(first)], confidence: "baja" };
+      // 3) Fallback: primera carta de la lista (baja confianza: conviene confirmar a mano)
+      if (allCards.length) return { candidates: [allCards[0]], allCards, confidence: "baja" };
 
-      return { candidates: [], confidence: "ninguna" };
+      return { candidates: [], allCards: [], confidence: "ninguna" };
+    }
+
+    // ---- Intento de detección directa desde un enlace de Moxfield/Archidekt ----
+    // Aviso: ambos sitios bloquean el scraping automático desde webs externas (Cloudflare +
+    // términos de servicio), así que esto puede fallar incluso con mazos públicos. Por eso
+    // siempre hay que dejar la vía de "pegar la lista de cartas" como alternativa fiable.
+    function extractMoxfieldCommanders(data) {
+      const names = new Set();
+      const tryBoard = (board) => {
+        if (!board) return;
+        Object.values(board).forEach((entry) => {
+          const name = entry && entry.card && entry.card.name;
+          if (name) names.add(name);
+        });
+      };
+      tryBoard(data && data.boards && data.boards.commanders && data.boards.commanders.cards);
+      tryBoard(data && data.commanders);
+      return Array.from(names);
+    }
+
+    async function tryDetectCommanderFromUrl(url) {
+      const moxMatch = url.match(/moxfield\.com\/decks\/([A-Za-z0-9_-]+)/i);
+      const archMatch = url.match(/archidekt\.com\/decks\/(\d+)/i);
+
+      if (moxMatch) {
+        const res = await fetch(`https://api2.moxfield.com/v2/decks/all/${moxMatch[1]}`);
+        if (!res.ok) throw new Error("blocked");
+        const data = await res.json();
+        const names = extractMoxfieldCommanders(data);
+        if (!names.length) throw new Error("no-commander-found");
+        return names;
+      }
+
+      if (archMatch) {
+        const res = await fetch(`https://archidekt.com/api/decks/${archMatch[1]}/`);
+        if (!res.ok) throw new Error("blocked");
+        const data = await res.json();
+        const names = [];
+        (data.cards || []).forEach((c) => {
+          const cats = c.categories || [];
+          if (cats.includes("Commander")) {
+            const name = (c.card && c.card.oracleCard && c.card.oracleCard.name) || (c.card && c.card.name);
+            if (name) names.push(name);
+          }
+        });
+        if (!names.length) throw new Error("no-commander-found");
+        return names;
+      }
+
+      throw new Error("unsupported-site");
     }
 
     async function fetchScryfallPrints(name) {
@@ -417,12 +507,34 @@
     function wireDeckArtWorkflow(root, initial = {}) {
       const textarea = root.querySelector(".deck-list-textarea");
       const detectBtn = root.querySelector('[data-action="detect-commander"]');
+      const detectFromUrlBtn = root.querySelector('[data-action="detect-from-url"]');
+      const urlInput = root.querySelector(".deck-source-url");
       const commanderInput = root.querySelector(".commander-input");
       const galleryZone = root.querySelector(".art-gallery-zone");
       const imageInput = root.querySelector(".image-url-input");
       const statusZone = root.querySelector(".deck-status-zone");
+      const candidatesZone = root.querySelector(".commander-candidates-zone");
       const posPreview = root.querySelector(".image-position-preview");
       const posSlider = root.querySelector(".image-position-slider");
+
+      function showCandidates(names, bestGuess) {
+        if (!candidatesZone) return;
+        if (names.length > 1) {
+          candidatesZone.innerHTML = `
+            <label class="block text-[9px] uppercase tracking-wider text-gold/80 mb-1 font-semibold mt-1">¿Es correcto? Confirma o elige otra carta</label>
+            <select class="commander-candidates-select w-full bg-felt border border-gold/30 text-parchment rounded p-2 text-xs focus:outline-none">
+              ${names.map((c) => `<option value="${esc(c)}" ${c === bestGuess ? "selected" : ""}>${esc(c)}</option>`).join("")}
+            </select>
+          `;
+          const select = candidatesZone.querySelector(".commander-candidates-select");
+          select.addEventListener("change", () => {
+            if (commanderInput) commanderInput.value = select.value;
+            searchAndShowArt(select.value);
+          });
+        } else {
+          candidatesZone.innerHTML = "";
+        }
+      }
 
       if (initial.deckList && textarea) textarea.value = initial.deckList;
 
@@ -455,22 +567,50 @@
         detectBtn.addEventListener("click", () => {
           const text = textarea ? textarea.value : "";
           if (!text.trim()) {
-            if (statusZone) statusZone.innerHTML = `<span class="text-[10px] text-crimson">Pega antes tu decklist en el cuadro de texto.</span>`;
+            if (statusZone) statusZone.innerHTML = `<span class="text-[10px] text-crimson">Pega antes tu lista de cartas en el cuadro de texto.</span>`;
+            if (candidatesZone) candidatesZone.innerHTML = "";
             return;
           }
-          const { candidates, confidence } = detectCommandersFromList(text);
+          const { candidates, allCards, confidence } = detectCommandersFromList(text);
           if (!candidates.length) {
-            if (statusZone) statusZone.innerHTML = `<span class="text-[10px] text-crimson">No se pudo detectar el comandante. Escríbelo a mano abajo.</span>`;
+            if (statusZone) statusZone.innerHTML = `<span class="text-[10px] text-crimson">No se pudo leer ninguna carta de esa lista. Escribe el comandante a mano abajo.</span>`;
+            if (candidatesZone) candidatesZone.innerHTML = "";
             return;
           }
           const guess = candidates.join(" // ");
           if (commanderInput) commanderInput.value = guess;
+          showCandidates(allCards, candidates[0]);
+
           if (statusZone) {
             statusZone.innerHTML = confidence === "baja"
-              ? `<span class="text-[10px] text-goldBright">Comandante probable: <strong>${esc(guess)}</strong> (revisa que sea correcto).</span>`
+              ? `<span class="text-[10px] text-goldBright">No he encontrado una cabecera "Commander" en la lista, así que esto es una suposición: <strong>${esc(guess)}</strong>. Revisa el desplegable de abajo y corrígelo si hace falta.</span>`
               : `<span class="text-[10px] text-goldBright">Comandante detectado: <strong>${esc(guess)}</strong></span>`;
           }
           searchAndShowArt(candidates[0]);
+        });
+      }
+
+      if (detectFromUrlBtn) {
+        detectFromUrlBtn.addEventListener("click", async () => {
+          const url = urlInput ? urlInput.value.trim() : "";
+          if (candidatesZone) candidatesZone.innerHTML = "";
+          if (!url) {
+            if (statusZone) statusZone.innerHTML = `<span class="text-[10px] text-crimson">Pega antes el enlace del mazo ahí arriba.</span>`;
+            return;
+          }
+          if (statusZone) statusZone.innerHTML = `<span class="text-[10px] text-goldBright/70 animate-pulse">Intentando leer el mazo desde el enlace...</span>`;
+          try {
+            const names = await tryDetectCommanderFromUrl(url);
+            const guess = names.join(" // ");
+            if (commanderInput) commanderInput.value = guess;
+            showCandidates(names, names[0]);
+            if (statusZone) statusZone.innerHTML = `<span class="text-[10px] text-goldBright">¡Funcionó! Comandante detectado: <strong>${esc(guess)}</strong></span>`;
+            searchAndShowArt(names[0]);
+          } catch (err) {
+            if (statusZone) {
+              statusZone.innerHTML = `<span class="text-[10px] text-crimson">No se ha podido leer el mazo desde el enlace (Moxfield/Archidekt bloquean el acceso automático desde webs externas). Pega la lista de cartas abajo en su lugar, es 100% fiable.</span>`;
+            }
+          }
         });
       }
 
@@ -524,14 +664,25 @@
             </div>
 
             <div>
-              <label class="block text-xs font-semibold uppercase tracking-wider text-parchmentDim/70 mb-1">Pega tu decklist (opcional)</label>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-parchmentDim/70 mb-1">Enlace del mazo (Moxfield o Archidekt)</label>
+              <input type="url" id="edit-deck-url" value="${esc(deck.deckUrl || '')}" placeholder="https://www.moxfield.com/decks/..." class="deck-source-url w-full bg-feltLight border border-gold/30 text-parchment rounded-lg p-2.5 text-xs focus:border-gold focus:outline-none mb-1.5">
+              <button type="button" class="w-full bg-gold/20 hover:bg-gold hover:text-black text-goldBright text-xs px-3 py-2 rounded-lg border border-gold/20 transition-all font-semibold cursor-pointer" data-action="detect-from-url">
+                Detectar comandante desde el enlace
+              </button>
+              <span class="block text-[10px] text-parchmentDim/40 mt-1 italic">Moxfield/Archidekt a veces bloquean esto desde webs externas. Si falla, usa la opción de abajo (100% fiable).</span>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-parchmentDim/70 mb-1">Alternativa fiable: pega tu lista de cartas</label>
               <textarea class="deck-list-textarea w-full bg-feltLight border border-gold/30 text-parchment rounded-lg p-2.5 text-xs h-20 focus:border-gold focus:outline-none" placeholder="Pega aquí la lista para volver a detectar el comandante"></textarea>
-              <button type="button" class="mt-1.5 w-full bg-gold/20 hover:bg-gold hover:text-black text-goldBright text-xs px-3 py-2 rounded-lg border border-gold/20 transition-all font-semibold cursor-pointer" data-action="detect-commander">
-                Detectar comandante y buscar arte
+              <button type="button" class="mt-1.5 w-full bg-white/5 hover:bg-gold hover:text-black text-goldBright text-xs px-3 py-2 rounded-lg border border-gold/20 transition-all font-semibold cursor-pointer" data-action="detect-commander">
+                Detectar comandante desde la lista
               </button>
             </div>
 
             <div class="deck-status-zone min-h-[16px]"></div>
+
+            <div class="commander-candidates-zone"></div>
 
             <div>
               <label class="block text-xs font-semibold uppercase tracking-wider text-parchmentDim/70 mb-1">Comandante</label>
@@ -550,11 +701,6 @@
               <div class="rounded-lg overflow-hidden border border-white/10 h-28 mb-2 bg-black/30 image-position-preview" style="background-image:url('${esc(deck.imageUrl || '')}'); background-size:cover; background-position: center ${deck.imagePosition != null ? deck.imagePosition : 30}%;"></div>
               <input type="range" min="0" max="100" value="${deck.imagePosition != null ? deck.imagePosition : 30}" class="image-position-slider w-full accent-gold cursor-pointer">
               <div class="flex justify-between text-[9px] text-parchmentDim/40 mt-0.5"><span>Arriba</span><span>Centro</span><span>Abajo</span></div>
-            </div>
-
-            <div>
-              <label class="block text-xs font-semibold uppercase tracking-wider text-parchmentDim/70 mb-1">Enlace de Decklist (Opcional)</label>
-              <input type="url" id="edit-deck-url" value="${esc(deck.deckUrl || '')}" placeholder="https://www.moxfield.com/decks/..." class="w-full bg-feltLight border border-gold/30 text-parchment rounded-lg p-2.5 text-xs focus:border-gold focus:outline-none">
             </div>
 
             <div class="flex gap-2 pt-3">
@@ -779,6 +925,8 @@
       const deckName = deck ? deck.name : "Sin Mazo";
       const cmdName = deck ? deck.commander : "Sin Comandante";
       const deckUrl = deck ? deck.deckUrl : "";
+      const isBorrowed = deck && deck.playerId !== player.id;
+      const borrowedFromName = isBorrowed ? (appState.data.players.find(p => p.id === deck.playerId)?.name || "otro jugador") : "";
       const cardBg = (deck && deck.imageUrl) ? deck.imageUrl : getPlayerBackground(player);
       const cardBgPos = (deck && deck.imageUrl) ? (deck.imagePosition != null ? deck.imagePosition : 30) : getPlayerBackgroundPosition(player);
       const winBorder = isWinner ? "border-goldBright shadow-[0_0_15px_rgba(217,184,118,0.25)] animate-pulse" : "border-white/10";
@@ -794,6 +942,10 @@
             <div class="absolute top-2 right-2 bg-gradient-to-r from-gold to-goldBright text-black text-[10px] font-bold px-2 py-0.5 rounded shadow-lg tracking-wider uppercase flex items-center gap-1 z-10">
               GANADOR
             </div>` : ""}
+          ${isBorrowed ? `
+            <div class="absolute top-2 left-2 bg-black/70 text-goldBright text-[9px] font-bold px-2 py-0.5 rounded border border-gold/30 shadow-lg tracking-wider uppercase z-10">
+              Prestado
+            </div>` : ""}
 
           <div class="relative z-10">
             <div class="flex items-center justify-between gap-1 mb-1">
@@ -806,6 +958,10 @@
             <div class="text-[10px] text-parchmentDim/70 italic line-clamp-1" title="${esc(cmdName)}">
               Comandante: ${esc(cmdName)}
             </div>
+            ${isBorrowed ? `
+              <div class="text-[9px] text-gold/80 italic line-clamp-1 mt-0.5">
+                Prestado de ${esc(borrowedFromName)}
+              </div>` : ""}
             ${deckUrl ? `
               <a href="${esc(deckUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-[9px] text-goldBright bg-black/50 px-1.5 py-0.5 rounded border border-gold/20 hover:bg-gold hover:text-ink mt-1.5 transition-colors">
                 Ver Lista
@@ -1103,6 +1259,9 @@
         
         const ids = slotData.map((s) => s.playerId);
         if (new Set(ids).size !== ids.length) return fail("Un jugador no puede participar más de una vez en la misma partida.");
+
+        const deckIds = slotData.map((s) => s.deckId);
+        if (new Set(deckIds).size !== deckIds.length) return fail("El mismo mazo no puede estar en dos puestos a la vez (un mazo prestado solo puede llevarlo una persona por partida).");
         
         const winner = slotData.find((s) => s.isWinner);
         if (!winner) return fail("Debe designarse un vencedor en el combate.");
@@ -1144,17 +1303,33 @@
     }
 
     function rebuildDeckSelect(slotEl, playerId) {
-      const { decks } = appState.data;
+      const { decks, players } = appState.data;
       const deckSelect = slotEl.querySelector(".slot-deck-select");
-      const available = decks.filter((d) => d.playerId === playerId);
       if (!playerId) {
         deckSelect.innerHTML = `<option value="">Elige jugador</option>`;
         deckSelect.disabled = true;
         return;
       }
       deckSelect.disabled = false;
-      deckSelect.innerHTML = `<option value="">${available.length ? "Selecciona..." : "Sin mazos creados"}</option>` +
-        available.map((d) => `<option value="${d.id}">${esc(d.name)} — ${esc(d.commander)}</option>`).join("");
+
+      const ownDecks = decks.filter((d) => d.playerId === playerId);
+      const borrowedDecks = decks.filter((d) => d.playerId !== playerId);
+
+      const ownOptions = ownDecks
+        .map((d) => `<option value="${d.id}">${esc(d.name)} — ${esc(d.commander)}</option>`)
+        .join("");
+      const borrowedOptions = borrowedDecks
+        .map((d) => {
+          const owner = players.find((p) => p.id === d.playerId);
+          const ownerName = owner ? owner.name : "Desconocido";
+          return `<option value="${d.id}">${esc(d.name)} — ${esc(d.commander)} (prestado de ${esc(ownerName)})</option>`;
+        })
+        .join("");
+
+      let html = `<option value="">${ownDecks.length || borrowedDecks.length ? "Selecciona..." : "No hay mazos creados todavía"}</option>`;
+      if (ownOptions) html += `<optgroup label="Sus mazos">${ownOptions}</optgroup>`;
+      if (borrowedOptions) html += `<optgroup label="Mazos prestados de otros jugadores">${borrowedOptions}</optgroup>`;
+      deckSelect.innerHTML = html;
     }
 
     function refreshSlotControls() {
@@ -1442,16 +1617,27 @@
           </div>
 
           <div>
-            <label class="block text-[9px] uppercase tracking-wider text-gold/80 mb-1 font-semibold">Pega tu decklist (opcional)</label>
-            <textarea class="deck-list-textarea w-full bg-felt border border-gold/30 text-parchment rounded p-2 text-xs h-20 focus:outline-none" placeholder="Pega aquí la lista exportada de Moxfield, Archidekt, MTGGoldfish..."></textarea>
-            <button type="button" class="mt-1.5 w-full bg-gold/20 hover:bg-gold hover:text-black text-goldBright text-[10px] px-2.5 py-1.5 rounded border border-gold/20 transition-all font-semibold cursor-pointer" data-action="detect-commander">
-              Detectar comandante y buscar arte
+            <label class="block text-[9px] uppercase tracking-wider text-gold/80 mb-1 font-semibold">Enlace del mazo (Moxfield o Archidekt)</label>
+            <input type="url" class="new-deck-url deck-source-url w-full bg-felt border border-gold/30 text-parchment rounded p-2 text-xs focus:outline-none mb-1.5" placeholder="https://www.moxfield.com/decks/...">
+            <button type="button" class="w-full bg-gold/20 hover:bg-gold hover:text-black text-goldBright text-[10px] px-2.5 py-1.5 rounded border border-gold/20 transition-all font-semibold cursor-pointer" data-action="detect-from-url">
+              Detectar comandante desde el enlace
+            </button>
+            <span class="block text-[9px] text-parchmentDim/40 mt-1 italic">Moxfield/Archidekt a veces bloquean esto desde webs externas. Si falla, usa la opción de abajo (100% fiable).</span>
+          </div>
+
+          <div>
+            <label class="block text-[9px] uppercase tracking-wider text-gold/80 mb-1 font-semibold">Alternativa fiable: pega tu lista de cartas</label>
+            <textarea class="deck-list-textarea w-full bg-felt border border-gold/30 text-parchment rounded p-2 text-xs h-20 focus:outline-none" placeholder="Copia y pega aquí todas las cartas del mazo (exportadas de Moxfield, Archidekt, MTGGoldfish, o simplemente la lista)"></textarea>
+            <button type="button" class="mt-1.5 w-full bg-white/5 hover:bg-gold hover:text-black text-goldBright text-[10px] px-2.5 py-1.5 rounded border border-gold/20 transition-all font-semibold cursor-pointer" data-action="detect-commander">
+              Detectar comandante desde la lista
             </button>
           </div>
 
           <div class="deck-status-zone min-h-[16px]">
-            <span class="text-[9px] text-parchmentDim/50 italic">Pega la lista y pulsa el botón, o escribe el comandante a mano abajo.</span>
+            <span class="text-[9px] text-parchmentDim/50 italic">Prueba el enlace, o pega la lista y pulsa su botón. También puedes escribir el comandante a mano abajo.</span>
           </div>
+
+          <div class="commander-candidates-zone"></div>
 
           <div>
             <label class="block text-[9px] uppercase tracking-wider text-gold/80 mb-1 font-semibold">Comandante</label>
@@ -1470,11 +1656,6 @@
             <div class="rounded-lg overflow-hidden border border-white/10 h-24 mb-2 bg-black/30 image-position-preview" style="background-size:cover; background-position: center 30%;"></div>
             <input type="range" min="0" max="100" value="30" class="image-position-slider w-full accent-gold cursor-pointer">
             <div class="flex justify-between text-[9px] text-parchmentDim/40 mt-0.5"><span>Arriba</span><span>Centro</span><span>Abajo</span></div>
-          </div>
-
-          <div>
-            <label class="block text-[9px] uppercase tracking-wider text-gold/80 mb-1 font-semibold">Enlace de Decklist (opcional, para el botón "Ver Decklist")</label>
-            <input type="url" class="new-deck-url w-full bg-felt border border-gold/30 text-parchment rounded p-2 text-xs focus:outline-none" placeholder="https://www.moxfield.com/decks/...">
           </div>
 
           <div class="flex gap-2 pt-1">
