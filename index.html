@@ -1793,11 +1793,11 @@
       const bestSolRing = solRingStats.length
         ? [...solRingStats].sort((a, b) => b.solRingCount - a.solRingCount || b.gamesPlayed - a.gamesPlayed)[0]
         : null;
-      const SOL_RING_ART = "https://api.scryfall.com/cards/named?exact=Sol+Ring&format=image&version=art_crop";
+      const SOL_RING_ART = "https://mktg-assets.tcgplayer.com/content/magic/2022/02/07/Sol%20Ring%20Old%20Reliable-min.jpeg";
 
       const solRingCard = bestSolRing ? featuredStatCardHTML({
         label: "Más Sol Ring T1",
-        tagline: "Aceleración por las nubes",
+        tagline: "3 sol rings metidos en el culo",
         bg: SOL_RING_ART,
         bgPos: 40,
         title: bestSolRing.name,
@@ -1814,8 +1814,8 @@
       return `
         <div class="animate-fade-in">
           <div class="text-center mb-8">
-            <h2 class="font-serif text-3xl font-bold text-goldBright">Resumen de la Mesa</h2>
-            <p class="text-parchmentDim/60 text-sm mt-1">Los destacados del grupo, actualizados con cada partida registrada.</p>
+            <h2 class="font-serif text-3xl font-bold text-goldBright">Resumen del grupo</h2>
+            <p class="text-parchmentDim/60 text-sm mt-1">Stats rapiditas para saber quien es el más terrorista</p>
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             ${formCard}
