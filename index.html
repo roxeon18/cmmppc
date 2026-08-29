@@ -1528,7 +1528,7 @@
           </div>`;
       }
 
-      const FORM_WINDOW = 10;
+      const FORM_WINDOW = 15;
       const MIN_GAMES_FORM = 3;
       const MIN_GAMES_DECK = 3;
       const MIN_GAMES_PLAYER = 3;
@@ -1633,7 +1633,11 @@
 
     function rankingTabHTML() {
       const rankingPlayers = computePlayerStats().sort((a, b) => b.winrate - a.winrate || b.wins - a.wins || b.gamesPlayed - a.gamesPlayed || a.name.localeCompare(b.name));
-      const rankingDecks = getDecksRanking();
+
+      const MIN_GAMES_DECK_RANKING = 5;
+      const allDecksRanking = getDecksRanking();
+      const rankingDecks = allDecksRanking.filter((d) => d.gamesPlayed >= MIN_GAMES_DECK_RANKING).slice(0, 10);
+      const excludedDeckCount = allDecksRanking.filter((d) => d.gamesPlayed > 0 && d.gamesPlayed < MIN_GAMES_DECK_RANKING).length;
 
       const playerRows = rankingPlayers.map((p, i) => {
         const rankSymbol = i + 1;
@@ -1641,7 +1645,7 @@
         const coverPos = getPlayerBackgroundPosition(p);
         return `
           <div class="relative flex items-center gap-4 p-5 min-h-[92px] rounded-2xl border border-white/5 overflow-hidden transition-all duration-200 hover:border-gold/40 hover:scale-[1.01]"
-               style="background-image: linear-gradient(90deg, rgba(0,0,0,0.85) 25%, rgba(0,0,0,0.35) 100%), url('${coverPhoto}'); background-size: cover; background-position: center ${coverPos}%;">>
+               style="background-image: linear-gradient(90deg, rgba(0,0,0,0.85) 25%, rgba(0,0,0,0.35) 100%), url('${coverPhoto}'); background-size: cover; background-position: center ${coverPos}%;">
             <div class="font-serif font-bold text-gold text-2xl w-9 text-center shrink-0 drop-shadow-md">${rankSymbol}</div>
             <div class="flex-1 min-w-0">
               <div class="font-serif font-bold text-parchment text-lg sm:text-xl drop-shadow-md truncate">${esc(p.name)}</div>
@@ -1706,11 +1710,15 @@
           <!-- Decks Ranking Panel -->
           <div class="bg-black/20 border border-gold/10 p-5 sm:p-6 rounded-2xl shadow-xl">
             <div class="mb-4">
-              <h2 class="font-serif text-2xl font-bold text-goldBright">Ranking de Barajas</h2>
-              <p class="text-parchmentDim/50 text-xs mt-1">Clasificadas por porcentaje de victorias de cada mazo registrado.</p>
+              <h2 class="font-serif text-2xl font-bold text-goldBright">Top 10 de Barajas</h2>
+              <p class="text-parchmentDim/50 text-xs mt-1">Los 10 mazos con mejor winrate, contando solo los que han jugado al menos ${MIN_GAMES_DECK_RANKING} partidas.</p>
             </div>
             ${rankingDecks.length === 0 ? `
-              <div class="text-center py-8 text-parchmentDim/40 italic text-sm">Sin datos de barajas disponibles.</div>
+              <div class="text-center py-8 text-parchmentDim/40 italic text-sm">
+                ${excludedDeckCount > 0
+                  ? `Todavía ningún mazo ha alcanzado las ${MIN_GAMES_DECK_RANKING} partidas mínimas para entrar en el ranking.`
+                  : `Sin datos de barajas disponibles.`}
+              </div>
             ` : `
               <div class="space-y-2">
                 ${deckRows}
