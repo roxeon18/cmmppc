@@ -344,12 +344,20 @@
       }).sort((a, b) => b.winrate - a.winrate || b.wins - a.wins || b.gamesPlayed - a.gamesPlayed || a.name.localeCompare(b.name));
     }
 
-    // "games" ya viene ordenado de más reciente a más antigua (addGame añade al principio),
-    // así que basta con coger las primeras N partidas de cada jugador para su forma reciente.
+    // OJO: no basta con asumir que "games" está en orden cronológico solo porque addGame
+    // inserta al principio del array. Si alguna vez se registra una partida atrasada
+    // (fecha antigua añadida hoy), acabaría al principio del array sin ser realmente
+    // reciente. Por eso aquí se ordena explícitamente por la fecha real de la partida
+    // (y por createdAt como desempate si dos partidas comparten fecha) antes de recortar
+    // a las últimas N.
     function computeFormStats(windowSize = 10) {
       const { players, games } = appState.data;
+      const sortedByDate = [...games].sort((a, b) => {
+        if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      });
       return players.map((p) => {
-        const recent = games.filter((g) => g.participants.some((pt) => pt.playerId === p.id)).slice(0, windowSize);
+        const recent = sortedByDate.filter((g) => g.participants.some((pt) => pt.playerId === p.id)).slice(0, windowSize);
         const wins = recent.filter((g) => g.winnerId === p.id).length;
         const gamesPlayed = recent.length;
         return { ...p, gamesPlayed, wins, winrate: gamesPlayed ? (wins / gamesPlayed) * 100 : 0 };
@@ -1530,7 +1538,7 @@
 
       const FORM_WINDOW = 15;
       const MIN_GAMES_FORM = 3;
-      const MIN_GAMES_DECK = 3;
+      const MIN_GAMES_DECK = 5;
       const MIN_GAMES_PLAYER = 3;
 
       // 1) Jugador más en forma: mejor winrate en sus últimas 10 partidas
@@ -1602,7 +1610,7 @@
 
       const solRingCard = bestSolRing ? featuredStatCardHTML({
         label: "Más Sol Ring T1",
-        tagline: "3 sol rings metidos en el culo",
+        tagline: "Aceleración por las nubes",
         bg: SOL_RING_ART,
         bgPos: 40,
         title: bestSolRing.name,
